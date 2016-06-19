@@ -21,14 +21,13 @@ def train_model(model, batches, optimizer, dest_dir, max_epoch=None, gpu=None, s
     :param gpu: ID of GPU (None to use CPU)
     :param save_every: save every this number of epochs (first epoch and last epoch are always saved)
     """
+    util.save_model_def(model, dest_dir)
+
     if gpu is not None:
-        # set up GPU
         model.to_gpu()
 
     logger = logging.getLogger()
     n_batches = len(batches)
-
-    util.save_model_def(model, dest_dir)
 
     # set up optimizer
     optimizer.setup(model)
@@ -108,7 +107,7 @@ def train_model(model, batches, optimizer, dest_dir, max_epoch=None, gpu=None, s
         # report results
         report = OrderedDict()
         report['type'] = 'TRAIN_DONE'
-        status['acc'] = '{:.1%}'.format(float(acc))
+        report['acc'] = '{:.1%}'.format(float(acc))
         report['correct'] = int(ok)
         report['total'] = tot
         report['loss'] = '{:.4}'.format(float(loss_tot))
@@ -191,8 +190,8 @@ def evaluate_model(model, batches, gpu=None):
     # report results
     report = OrderedDict()
     report['type'] = 'EVAL_DONE'
-    status['acc'] = '{:.1%}'.format(float(acc))
-    report['correct'] = ok
+    report['acc'] = '{:.1%}'.format(float(acc))
+    report['correct'] = int(ok)
     report['total'] = tot
     report['loss'] = '{:.4}'.format(float(loss_tot))
     report['samples'] = sample_num

@@ -65,7 +65,8 @@ class AttentionalDecoder(Chain):
         x = _create_var(encoder_states.data, BOS_ID, dtype=np.int32)
 
         batch_size = encoder_states.data.shape[0]
-        done = [False] * batch_size
+        xp = cuda.get_array_module(encoder_states.data)
+        done = xp.asarray([False] * batch_size)
         for i in range(max_len):
             y, w, hs, cs = self.step(x, hs, cs, encoder_states)
             ys.append(y)

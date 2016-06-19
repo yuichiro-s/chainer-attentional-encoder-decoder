@@ -77,3 +77,4 @@ def load_model(path):
     with open(model_def_path, 'rb') as f:
         model = pickle.load(f)  # load model definition
         load_hdf5(path, model)  # load parameters
+    return model
