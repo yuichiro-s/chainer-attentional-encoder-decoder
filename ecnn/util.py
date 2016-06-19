@@ -34,6 +34,15 @@ def load_bitext(path, vocab_src, vocab_trg):
     return data
 
 
+def load_sentences(path, vocab):
+    data = []
+    with open(path) as f:
+        for line in f:
+            ids = list(map(vocab.get_id, line.strip().split()))
+            data.append(ids)
+    return data
+
+
 def create_batches(data, batch_size, src_bucket_step, trg_bucket_step):
     # NOTE: this function modifies `data`
     batches = []
@@ -52,6 +61,21 @@ def create_batches(data, batch_size, src_bucket_step, trg_bucket_step):
             trg_ids_arr = np.asarray(trg_ids_lst, dtype=np.int32).T
             batch = src_ids_arr, trg_ids_arr
             batches.append(batch)
+    return batches
+
+
+def create_batches_src(data, batch_size, bucket_step):
+    batches = []
+    buckets = defaultdict(list)
+    for idx, src_ids in enumerate(data):
+        while len(src_ids) % bucket_step > 0:
+            src_ids.append(IGNORE_ID)
+        buckets[len(src_ids)].append((idx, src_ids))
+    for samples in buckets.values():
+        for i in range(0, len(samples), batch_size):
+            idx_lst, src_ids_lst = zip(*samples[i:i+batch_size])
+            src_ids_arr = np.asarray(src_ids_lst, dtype=np.int32).T
+            batches.append((idx_lst, src_ids_arr))
     return batches
 
 

@@ -56,8 +56,8 @@ def train_model(model, batches, optimizer, dest_dir, max_epoch=None, gpu=None, s
                                        ts_data = cuda.to_gpu(ts_data)
 
                 # create variable
-                xs = _create_variables(xs_data)
-                ts = _create_variables(ts_data)
+                xs = create_variables(xs_data)
+                ts = create_variables(ts_data)
 
                 t2 = time.time()
                 optimizer.zero_grads()
@@ -152,8 +152,8 @@ def evaluate_model(model, batches, gpu=None):
             ts_data = cuda.to_gpu(ts_data)
 
         # create variable
-        xs = _create_variables(xs_data)
-        ts = _create_variables(ts_data)
+        xs = create_variables(xs_data)
+        ts = create_variables(ts_data)
 
         t2 = time.time()
         loss, ys, ws = model(xs, ts)
@@ -199,12 +199,12 @@ def evaluate_model(model, batches, gpu=None):
     logger.info(_status_str(report))
 
 
+def create_variables(xs):
+    return list(map(lambda x: Variable(x), xs))
+
+
 def _unk_ratio(data):
     return float((data == UNK_ID).sum() / (data != IGNORE_ID).sum())
-
-
-def _create_variables(xs):
-    return list(map(lambda x: Variable(x), xs))
 
 
 def _status_str(status):

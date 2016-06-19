@@ -52,7 +52,7 @@ def main(args):
     logger.info('Creating batches...')
     train_batches = util.create_batches(train_data, args.batch, args.src_bucket_step, args.trg_bucket_step)
 
-    # create VAE
+    # create model
     vocab_size_src = vocab_src.size()
     vocab_size_trg = vocab_trg.size()
     layer_num = args.layer
