@@ -43,7 +43,7 @@ def main(args):
             xs_data = cuda.to_gpu(xs_data)
         xs = procedure.create_variables(xs_data)
 
-        ids_batch, ys, ws = encdec.generate(xs, max_len=args.max_len)
+        ids_batch, ys, ws = encdec.generate(xs, max_len=args.max_len, sample=args.sample, temp=args.temp)
         ids_batch = map(cuda.to_cpu, ids_batch)
         ids_t = list(zip(*ids_batch))
         assert len(idx_lst) == len(ids_t)
@@ -72,5 +72,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, default=32, help='batch size')
     parser.add_argument('--gpu', type=int, default=None, help='GPU ID (default: use CPU)')
     parser.add_argument('--bucket-step', type=int, default=4, help='step size for padding of source')
+
+    parser.add_argument('--sample', action='store_true', help='sampling-based generation')
+    parser.add_argument('--temp', type=float, default=1., help='temperature of softmax for sampling')
 
     main(parser.parse_args())

@@ -56,7 +56,7 @@ class AttentionalDecoder(Chain):
             ws.append(w)
         return ys, ws
 
-    def generate(self, encoder_states, max_len):
+    def generate(self, encoder_states, max_len, sample=False, temp=1.):
         ids = []
         ys = []
         ws = []
@@ -72,12 +72,22 @@ class AttentionalDecoder(Chain):
             ys.append(y)
             ws.append(w)
 
-            next_id = y.data.argmax(axis=1)
+            if sample:
+                unnormalized_probs = xp.exp(y.data * temp)
+                probs = unnormalized_probs / unnormalized_probs.sum(axis=1, keepdims=True)
+                probs = cuda.to_cpu(probs)
+                next_id = xp.asarray(list(map(lambda ps: np.random.choice(len(ps), p=ps), probs)), dtype=np.int32)
+            else:
+                # deterministic
+                next_id = y.data.argmax(axis=1).astype(np.int32)
             ids.append(next_id)
             done |= next_id == EOS_ID
             if all(done):
                 # all samples have reached EOS
                 break
+
+            # create next ID
+            x = Variable(next_id)
 
         return ids, ys, ws
 

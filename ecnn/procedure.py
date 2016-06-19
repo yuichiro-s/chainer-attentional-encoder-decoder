@@ -52,8 +52,8 @@ def train_model(model, batches, optimizer, dest_dir, max_epoch=None, gpu=None, s
                 # copy data to GPU
                 t1 = time.time()
                 if gpu is not None:
-                                       xs_data = cuda.to_gpu(xs_data)
-                                       ts_data = cuda.to_gpu(ts_data)
+                    xs_data = cuda.to_gpu(xs_data)
+                    ts_data = cuda.to_gpu(ts_data)
 
                 # create variable
                 xs = create_variables(xs_data)
