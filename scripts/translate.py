@@ -7,7 +7,7 @@ from chainer import cuda
 
 from ecnn import util
 from ecnn import procedure
-from ecnn.vocabulary import Vocab, EOS_ID
+from ecnn.vocabulary import Vocab
 
 
 def main(args):
@@ -44,13 +44,8 @@ def main(args):
         xs = procedure.create_variables(xs_data)
 
         ids_batch, ys, ws = encdec.generate(xs, max_len=args.max_len, sample=args.sample, temp=args.temp)
-        ids_batch = map(cuda.to_cpu, ids_batch)
-        ids_t = list(zip(*ids_batch))
-        assert len(idx_lst) == len(ids_t)
-        for idx, ids in zip(idx_lst, ids_t):
-            if EOS_ID in ids:
-                eos_idx = ids.index(EOS_ID)
-                ids = ids[:eos_idx]
+        assert len(idx_lst) == len(ids_batch)
+        for idx, ids in zip(idx_lst, ids_batch):
             words = map(vocab_trg.get_word, ids)
             assert idx not in res
             res[idx] = words

@@ -46,11 +46,25 @@ class TestAttentionalEncoderDecoder(unittest.TestCase):
             xs = _create_xs(encdec, batch_size, x_len)
             ids, ys, ws = encdec.generate(xs, max_len=max_len)
 
-            self.assertLessEqual(len(ids), max_len)
-            self.assertEqual(len(ids), len(ys))
-            self.assertEqual(len(ids), len(ws))
-            self.assertEqual(ids[0].shape, (batch_size,))
-            self.assertTrue(np.alltrue(ids[0] < encdec.out_vocab_size))
+            max_len = max(map(len, ids))
+            self.assertEqual(max_len, len(ys))
+            self.assertEqual(max_len, len(ws))
+            self.assertEqual(len(ids), batch_size)
+            self.assertTrue(all(map(lambda id: id < encdec.out_vocab_size, ids[0])))
+
+    def test_generate_beam(self):
+        for encdec in self.encdecs:
+            batch_size = 1
+            x_len = 11
+            max_len = 10
+            xs = _create_xs(encdec, batch_size, x_len)
+
+            beam_size = 4
+            for ids, ys, ws in encdec.generate_beam(xs, beam_size=beam_size, max_len=max_len):
+                self.assertEqual(len(ids), len(ys))
+                self.assertEqual(len(ids), len(ws))
+                self.assertTrue(all(map(lambda id: id < encdec.out_vocab_size, ids)))
+                print(ids)
 
 
 def _create_x(encdec, batch_size):

@@ -47,8 +47,7 @@ class AttentionalDecoder(Chain):
     def __call__(self, xs, encoder_states):
         ys = []
         ws = []
-        cs = [None] * self.layer_num
-        hs = [None] * self.layer_num
+        hs, cs = self.init_state()
         bos = _create_var(encoder_states.data, BOS_ID, dtype=np.int32)
         for x in [bos] + xs:
             y, w, hs, cs = self.step(x, hs, cs, encoder_states)
@@ -60,8 +59,7 @@ class AttentionalDecoder(Chain):
         ids = []
         ys = []
         ws = []
-        cs = [None] * self.layer_num
-        hs = [None] * self.layer_num
+        hs, cs = self.init_state()
         x = _create_var(encoder_states.data, BOS_ID, dtype=np.int32)
 
         batch_size = encoder_states.data.shape[0]
@@ -89,7 +87,84 @@ class AttentionalDecoder(Chain):
             # create next ID
             x = Variable(next_id)
 
-        return ids, ys, ws
+        # remove trailing IGNORE_ID's
+        ids = map(cuda.to_cpu, ids)
+        ids_lst = []
+        for id_lst in zip(*ids):
+            if EOS_ID in id_lst:
+                eos_idx = id_lst.index(EOS_ID)
+                id_lst = id_lst[:eos_idx+1]
+            ids_lst.append(id_lst)
+
+        return ids_lst, ys, ws
+
+    def generate_beam(self, encoder_states, beam_size, max_len):
+        assert encoder_states.data.shape[0] == 1, "batch size must be 1"
+
+        # initialize hypotherses
+        hypotheses = []     # [(score, is_done, state, (prev_id, prev_y, prev_w), prev_hypothesis, length)]
+        init_hypothesis = (
+            0.,
+            False,
+            self.init_state(),  # (hs, cs)
+            (BOS_ID, None, None),
+            None,
+            0,
+        )
+        hypotheses.append(init_hypothesis)
+
+        i = 0
+        while i < max_len and not all(map(lambda h: h[1], hypotheses)):
+            # maximum steps have not been reached and some hypotheses have not reached <EOS>
+
+            # generate next hypotheses
+            next_hypotheses = []
+            for h in hypotheses:
+                score, is_done, (prev_hs, prev_cs), (prev_id, _, _), _, length = h
+                if is_done:
+                    # leave as-is
+                    next_hypotheses.append(h)
+                else:
+                    # expand hypothesis
+                    x = _create_var(encoder_states.data, prev_id, dtype=np.int32)
+                    y, w, hs, cs = self.step(x, prev_hs, prev_cs, encoder_states)
+                    assert y.data.shape[0] == 1
+
+                    for next_id, next_score in sorted(enumerate(y.data[0]), key=lambda i_d: -i_d[1])[:beam_size]:
+                        next_h = (
+                            score + next_score,
+                            next_id == EOS_ID,
+                            (hs, cs),
+                            (next_id, y, w),
+                            h,
+                            length + 1,
+                        )
+                        next_hypotheses.append(next_h)
+
+            # sort & filter hypotheses
+            #next_hypotheses.sort(key=lambda h: -h[0])   # sort by score
+            next_hypotheses.sort(key=lambda h: -h[0] / h[5])   # sort by average score
+            hypotheses = next_hypotheses[:beam_size]
+
+            i += 1
+
+        res = []
+        for h in hypotheses:
+            ids = []
+            ys = []
+            ws = []
+            while h[4] is not None:     # while not done
+                _, _, _, (prev_id, prev_y, prev_w), h_prev, _ = h
+                ids.append(prev_id)
+                ys.append(prev_y)
+                ws.append(prev_w)
+                h = h_prev
+            ids.reverse()
+            ys.reverse()
+            ws.reverse()
+            res.append((ids, ys, ws))
+
+        return res
 
     def step(self, x, hs, cs, encoder_states):
         new_hs = []
@@ -109,6 +184,11 @@ class AttentionalDecoder(Chain):
         y = self.softmax_linear(encoder_context_h_in)   # TODO: according to the paper, ReLU is used after this linear
 
         return y, normalized_weights, new_hs, new_cs
+
+    def init_state(self):
+        cs = [None] * self.layer_num
+        hs = [None] * self.layer_num
+        return hs, cs
 
 
 class AttentionalEncoderDecoder(Chain):
@@ -167,6 +247,11 @@ class AttentionalEncoderDecoder(Chain):
         encoder_states = _create_encoder_states_matrix(hs)
         ids, ys, ws = self.decoder.generate(encoder_states, **kwargs)
         return ids, ys, ws
+
+    def generate_beam(self, xs, **kwargs):
+        hs = self.encoder(xs)
+        encoder_states = _create_encoder_states_matrix(hs)
+        return self.decoder.generate_beam(encoder_states, **kwargs)
 
 
 def _create_var(arr, val, dtype):
