@@ -85,7 +85,7 @@ class AttentionalDecoder(Chain):
                 break
 
             # create next ID
-            x = Variable(next_id)
+            x = Variable(next_id, volatile='on')
 
         # remove trailing IGNORE_ID's
         ids = map(cuda.to_cpu, ids)
@@ -101,68 +101,78 @@ class AttentionalDecoder(Chain):
     def generate_beam(self, encoder_states, beam_size, max_len):
         assert encoder_states.data.shape[0] == 1, "batch size must be 1"
 
-        # initialize hypotherses
-        hypotheses = []     # [(score, is_done, state, (prev_id, prev_y, prev_w), prev_hypothesis, length)]
+        xp = cuda.get_array_module(encoder_states.data)
+
+        # grow encoder_states
+        encoder_states = Variable(encoder_states.data.repeat(beam_size, axis=0), volatile='on')    # (batch_size x input_length)
+
+        # initialize hypotheses
+        hypotheses = []     # [(score, is_done, ids, length)]
         init_hypothesis = (
             0.,
             False,
-            self.init_state(),  # (hs, cs)
-            (BOS_ID, None, None),
-            None,
+            [BOS_ID],
             0,
         )
         hypotheses.append(init_hypothesis)
 
-        i = 0
-        while i < max_len and not all(map(lambda h: h[1], hypotheses)):
+        step = 0
+        hs, cs = self.init_state()
+        while step < max_len and not all(map(lambda hypothesis: hypothesis[1], hypotheses)):
             # maximum steps have not been reached and some hypotheses have not reached <EOS>
 
             # generate next hypotheses
             next_hypotheses = []
-            for h in hypotheses:
-                score, is_done, (prev_hs, prev_cs), (prev_id, _, _), _, length = h
+
+            # run RNN simultaneously for all hypotheses
+            assert len(hypotheses) <= beam_size
+            x_d = xp.full((beam_size,), IGNORE_ID, np.int32)
+            for i, (_, _, ids, _) in enumerate(hypotheses):
+                x_d[i] = ids[-1]
+            x = Variable(x_d, volatile='on')
+            y, _, hs, cs = self.step(x, hs, cs, encoder_states)
+
+            scores = xp.exp(y.data)
+            scores /= scores.sum(axis=1, keepdims=True)
+            for i, (hypothesis, y_i) in enumerate(zip(hypotheses, scores)):
+                score, is_done, ids, length = hypothesis
+
                 if is_done:
                     # leave as-is
-                    next_hypotheses.append(h)
+                    next_hypotheses.append((i, hypothesis))
                 else:
-                    # expand hypothesis
-                    x = _create_var(encoder_states.data, prev_id, dtype=np.int32)
-                    y, w, hs, cs = self.step(x, prev_hs, prev_cs, encoder_states)
-                    assert y.data.shape[0] == 1
-
-                    for next_id, next_score in sorted(enumerate(y.data[0]), key=lambda i_d: -i_d[1])[:beam_size]:
+                    for next_id, next_score in sorted(enumerate(y_i), key=lambda i_d: -i_d[1])[:beam_size]:
                         next_h = (
                             score + next_score,
                             next_id == EOS_ID,
-                            (hs, cs),
-                            (next_id, y, w),
-                            h,
+                            ids + [next_id],
                             length + 1,
                         )
-                        next_hypotheses.append(next_h)
+                        next_hypotheses.append((i, next_h))
 
             # sort & filter hypotheses
-            #next_hypotheses.sort(key=lambda h: -h[0])   # sort by score
-            next_hypotheses.sort(key=lambda h: -h[0] / h[5])   # sort by average score
-            hypotheses = next_hypotheses[:beam_size]
+            next_hypotheses.sort(key=lambda i_h: -i_h[1][0] / i_h[1][3])   # sort by average score
+            #next_hypotheses.sort(key=lambda i_h: -i_h[1][0])   # sort by average score
 
-            i += 1
+            # prepare data for next step
+            hypotheses = []
+            hs_data = list(map(lambda h: h.data, hs))
+            cs_data = list(map(lambda c: c.data, cs))
+            new_hs = list(map(lambda h: xp.zeros_like(h.data), hs))
+            new_cs = list(map(lambda c: xp.zeros_like(c.data), cs))
+            for i, (j, hypothesis) in enumerate(next_hypotheses[:beam_size]):
+                hypotheses.append(hypothesis)
+                for l in range(self.layer_num):
+                    new_hs[l][i] = hs_data[l][i]
+                    new_cs[l][i] = cs_data[l][i]
+            hs = map(lambda d: Variable(xp.asarray(d, dtype=np.float32), volatile='on'), new_hs)
+            cs = map(lambda d: Variable(xp.asarray(d, dtype=np.float32), volatile='on'), new_cs)
+            step += 1
 
         res = []
-        for h in hypotheses:
-            ids = []
-            ys = []
-            ws = []
-            while h[4] is not None:     # while not done
-                _, _, _, (prev_id, prev_y, prev_w), h_prev, _ = h
-                ids.append(prev_id)
-                ys.append(prev_y)
-                ws.append(prev_w)
-                h = h_prev
-            ids.reverse()
-            ys.reverse()
-            ws.reverse()
-            res.append((ids, ys, ws))
+        for _, _, ids, _ in hypotheses:
+            # exclude BOS_ID
+            res.append(ids[1:])
 
         return res
 
@@ -257,7 +267,7 @@ class AttentionalEncoderDecoder(Chain):
 def _create_var(arr, val, dtype):
     batch_size = arr.shape[0]
     xp = cuda.get_array_module(arr)
-    return Variable(xp.full((batch_size,), val, dtype))
+    return Variable(xp.full((batch_size,), val, dtype), volatile='auto')
 
 
 def _create_encoder_states_matrix(hs):

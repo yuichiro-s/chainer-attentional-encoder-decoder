@@ -152,8 +152,8 @@ def evaluate_model(model, batches, gpu=None):
             ts_data = cuda.to_gpu(ts_data)
 
         # create variable
-        xs = create_variables(xs_data)
-        ts = create_variables(ts_data)
+        xs = create_variables(xs_data, volatile='on')
+        ts = create_variables(ts_data, volatile='on')
 
         t2 = time.time()
         loss, ys, ws = model(xs, ts)
@@ -199,8 +199,8 @@ def evaluate_model(model, batches, gpu=None):
     logger.info(_status_str(report))
 
 
-def create_variables(xs):
-    return list(map(lambda x: Variable(x), xs))
+def create_variables(xs, volatile='off'):
+    return list(map(lambda x: Variable(x, volatile=volatile), xs))
 
 
 def _unk_ratio(data):

@@ -43,7 +43,7 @@ class TestAttentionalEncoderDecoder(unittest.TestCase):
             batch_size = 6
             x_len = 11
             max_len = 10
-            xs = _create_xs(encdec, batch_size, x_len)
+            xs = _create_xs(encdec, batch_size, x_len, volatile='on')
             ids, ys, ws = encdec.generate(xs, max_len=max_len)
 
             max_len = max(map(len, ids))
@@ -57,22 +57,22 @@ class TestAttentionalEncoderDecoder(unittest.TestCase):
             batch_size = 1
             x_len = 11
             max_len = 10
-            xs = _create_xs(encdec, batch_size, x_len)
+            xs = _create_xs(encdec, batch_size, x_len, volatile='on')
 
             beam_size = 4
-            for ids, ys, ws in encdec.generate_beam(xs, beam_size=beam_size, max_len=max_len):
-                self.assertEqual(len(ids), len(ys))
-                self.assertEqual(len(ids), len(ws))
+            #for ids, ys, ws in encdec.generate_beam(xs, beam_size=beam_size, max_len=max_len):
+            for ids in encdec.generate_beam(xs, beam_size=beam_size, max_len=max_len):
+                #self.assertEqual(len(ids), len(ys))
+                #self.assertEqual(len(ids), len(ws))
                 self.assertTrue(all(map(lambda id: id < encdec.out_vocab_size, ids)))
-                print(ids)
 
 
-def _create_x(encdec, batch_size):
+def _create_x(encdec, batch_size, volatile):
     data = np.random.randint(0, encdec.in_vocab_size, (batch_size,), dtype=np.int32)
-    return Variable(data)
+    return Variable(data, volatile=volatile)
 
 
-def _create_xs(encdec, batch_size, x_len):
-    xs = list(map(lambda _: _create_x(encdec, batch_size), range(x_len)))
+def _create_xs(encdec, batch_size, x_len, volatile='off'):
+    xs = list(map(lambda _: _create_x(encdec, batch_size, volatile=volatile), range(x_len)))
     return xs
 

@@ -2,6 +2,7 @@
 
 import os
 import logging
+from collections import defaultdict
 
 from chainer import cuda
 
@@ -33,26 +34,43 @@ def main(args):
         vocab_trg = vocab
     data = util.load_sentences(args.data, vocab_src)
 
+    is_beam_search = args.beam > 1
+
     # create batches
-    batches = util.create_batches_src(data, args.batch, args.bucket_step)
+    if is_beam_search:
+        batch_size = 1
+    else:
+        batch_size = args.batch
+    batches = util.create_batches_src(data, batch_size, args.bucket_step)
 
     # generate
-    res = {}
+    res = defaultdict(list)
     for idx_lst, xs_data in batches:
         if args.gpu is not None:
             xs_data = cuda.to_gpu(xs_data)
-        xs = procedure.create_variables(xs_data)
+        xs = procedure.create_variables(xs_data, volatile='on')
 
-        ids_batch, ys, ws = encdec.generate(xs, max_len=args.max_len, sample=args.sample, temp=args.temp)
-        assert len(idx_lst) == len(ids_batch)
-        for idx, ids in zip(idx_lst, ids_batch):
-            words = map(vocab_trg.get_word, ids)
-            assert idx not in res
-            res[idx] = words
+        if is_beam_search:
+            decoded = encdec.generate_beam(xs, beam_size=args.beam, max_len=args.max_len)
+            if not args.n_best:
+                # only show best result
+                decoded = decoded[:1]
+            assert len(idx_lst) == 1
+            idx = idx_lst[0]
+            for ids in decoded:
+                words = map(vocab_trg.get_word, ids)
+                res[idx].append(words)
+        else:
+            ids_batch, ys, ws = encdec.generate(xs, max_len=args.max_len, sample=args.sample, temp=args.temp)
+            assert len(idx_lst) == len(ids_batch)
+            for idx, ids in zip(idx_lst, ids_batch):
+                words = map(vocab_trg.get_word, ids)
+                res[idx].append(words)
 
-    for idx, (idx2, words) in enumerate(sorted(res.items(), key=lambda k_v: k_v[0])):
-        assert idx == idx2
-        print(' '.join(words))
+    for idx, (idx2, cands) in enumerate(sorted(res.items(), key=lambda k_v: k_v[0])):
+        for words in cands:
+            assert idx == idx2
+            print(' '.join(words))
 
 
 if __name__ == '__main__':
@@ -68,6 +86,11 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=int, default=None, help='GPU ID (default: use CPU)')
     parser.add_argument('--bucket-step', type=int, default=4, help='step size for padding of source')
 
+    # beam search
+    parser.add_argument('--beam', type=int, default=1, help='beam size')
+    parser.add_argument('--n-best', action='store_true', help='print all candidates in beam')
+
+    # random generation
     parser.add_argument('--sample', action='store_true', help='sampling-based generation')
     parser.add_argument('--temp', type=float, default=1., help='temperature of softmax for sampling')
 

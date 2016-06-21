@@ -43,7 +43,7 @@ class CombineTwo(Chain):
             # length is odd
             d = xs[0].data
             xp = cuda.get_array_module(d)
-            pad = Variable(xp.zeros_like(d))    # TODO: is zero padding OK?
+            pad = Variable(xp.zeros_like(d), volatile='auto')    # TODO: is zero padding OK?
             xs = xs + [pad]
         assert len(xs) % 2 == 0
 
