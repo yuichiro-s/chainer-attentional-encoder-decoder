@@ -34,6 +34,8 @@ class AttentionalDecoder(Chain):
     def __init__(self, word_emb, hidden_dim, layer_num, out_vocab_size, gru):
         super(AttentionalDecoder, self).__init__(
             softmax_linear=L.Linear(hidden_dim * 2, out_vocab_size),
+            phi1_linear=L.Linear(hidden_dim, hidden_dim),    # TODO: make out dim adjustable
+            phi2_linear=L.Linear(hidden_dim, hidden_dim),    # TODO: make out dim adjustable
             rnns=ChainList(),
         )
         self.hidden_dim = hidden_dim
@@ -215,13 +217,14 @@ class AttentionalDecoder(Chain):
                 _, h_in = state
             new_states.append(state)
 
-        # TODO: linear + tanh for encoder_states and h_in
         batch_size, input_length, hidden_dim = encoder_states.data.shape
-        unnormalized_weights = F.reshape(F.batch_matmul(encoder_states, h_in), (batch_size, input_length))   # (batch, input_length)
+        h_in_linear = self.phi1_linear(h_in)    # (batch_size, hidden_dim)
+        h_in_linear_tanh = F.tanh(h_in_linear)  # (batch_size, hidden_dim)
+        unnormalized_weights = F.reshape(F.batch_matmul(encoder_states, h_in_linear_tanh), (batch_size, input_length))   # (batch, input_length)
         normalized_weights = F.softmax(unnormalized_weights)   # (batch, input_length)
         encoder_context = F.reshape(F.batch_matmul(encoder_states, normalized_weights, transa=True), (batch_size, hidden_dim))  # (batch, hidden_dim)
         encoder_context_h_in = F.concat([encoder_context, h_in], axis=1)   # (batch, hidden_dim * 2)
-        y = self.softmax_linear(encoder_context_h_in)   # TODO: according to the paper, ReLU is used after this linear
+        y = self.softmax_linear(F.relu(encoder_context_h_in))   # Is ReLU here really necessary?
 
         return y, normalized_weights, new_states
 
@@ -280,7 +283,7 @@ class AttentionalEncoderDecoder(Chain):
     def __call__(self, xs, ts):
         # NOTE: users must prepend <EOS> and pad with -1 by themselves
         hs = self.encoder(xs)
-        encoder_states = _create_encoder_states_matrix(hs)
+        encoder_states = self.create_encoder_states_matrix(hs)
         ys, ws = self.decoder(ts[:-1], encoder_states)  # last element of ts only plays a role of target
 
         loss = 0
@@ -293,15 +296,22 @@ class AttentionalEncoderDecoder(Chain):
 
     def generate(self, xs, **kwargs):
         hs = self.encoder(xs)
-        encoder_states = _create_encoder_states_matrix(hs)
+        encoder_states = self.create_encoder_states_matrix(hs)
         ids, ys, ws = self.decoder.generate(encoder_states, **kwargs)
         return ids, ys, ws
 
     def generate_beam(self, xs, **kwargs):
         hs = self.encoder(xs)
-        encoder_states = _create_encoder_states_matrix(hs)
+        encoder_states = self.create_encoder_states_matrix(hs)
         return self.decoder.generate_beam(encoder_states, **kwargs)
 
+    def create_encoder_states_matrix(self, hs):
+        batch_size, dim = hs[0].data.shape
+        hs_3d = list(map(lambda h: F.expand_dims(h, 1), hs))  # [(batch_size, 1, dim)]
+        hs_3d_concat = F.concat(hs_3d, axis=1)  # (batch_size, input_length, dim)
+        hs_3d_concat_linear = self.decoder.phi2_linear(F.reshape(hs_3d_concat, (-1, dim)))  # (batch_size * input_length, dim)
+        hs_3d_concat_linear_tanh = F.tanh(F.reshape(hs_3d_concat_linear, (batch_size, -1, dim)))     # (batch_size, input_length, dim)
+        return hs_3d_concat_linear_tanh
 
 def _create_var(arr, val, dtype):
     batch_size = arr.shape[0]
@@ -309,6 +319,3 @@ def _create_var(arr, val, dtype):
     return Variable(xp.full((batch_size,), val, dtype), volatile='auto')
 
 
-def _create_encoder_states_matrix(hs):
-    hs_3d = list(map(lambda h: F.expand_dims(h, 1), hs))  # (batch_size, 1, dim)
-    return F.concat(hs_3d, axis=1)    # (batch_size, input_length, dim)
