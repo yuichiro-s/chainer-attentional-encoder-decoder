@@ -20,18 +20,18 @@ class Encoder(Chain):
         )
         self.word_emb = word_emb
 
-    def __call__(self, xs):
+    def __call__(self, xs, train):
         hs = []
         for x in xs:
             h = self.word_emb(x)
             hs.append(h)
-        hs = self.multi_rnn(hs)
+        hs = self.multi_rnn(hs, train)
         return hs
 
 
 class AttentionalDecoder(Chain):
 
-    def __init__(self, word_emb, hidden_dim, layer_num, out_vocab_size, gru):
+    def __init__(self, word_emb, hidden_dim, layer_num, out_vocab_size, gru, dropout_ratio):
         super(AttentionalDecoder, self).__init__(
             softmax_linear=L.Linear(hidden_dim * 2, out_vocab_size),
             phi1_linear=L.Linear(hidden_dim, hidden_dim),    # TODO: make out dim adjustable
@@ -47,6 +47,7 @@ class AttentionalDecoder(Chain):
             self.rnns.add_link(rnn)
         self.word_emb = word_emb
         self.gru = gru
+        self.dropout_ratio = dropout_ratio
 
     def __call__(self, xs, encoder_states):
         ys = []
@@ -56,7 +57,7 @@ class AttentionalDecoder(Chain):
         rnn_states = self.init_states(xp, batch_size)
         bos = _create_var(encoder_states.data, BOS_ID, dtype=np.int32)
         for x in [bos] + xs:
-            y, w, rnn_states = self.step(x, rnn_states, encoder_states)
+            y, w, rnn_states = self.step(x, rnn_states, encoder_states, train=True)
             ys.append(y)
             ws.append(w)
         return ys, ws
@@ -72,7 +73,7 @@ class AttentionalDecoder(Chain):
 
         done = xp.asarray([False] * batch_size)
         for i in range(max_len):
-            y, w, rnn_states = self.step(x, rnn_states, encoder_states)
+            y, w, rnn_states = self.step(x, rnn_states, encoder_states, train=False)
             ys.append(y)
             ws.append(w)
 
@@ -136,7 +137,7 @@ class AttentionalDecoder(Chain):
             for i, (_, _, ids, _) in enumerate(hypotheses):
                 x_d[i] = ids[-1]
             x = Variable(x_d, volatile='on')
-            y, _, rnn_states = self.step(x, rnn_states, encoder_states)
+            y, _, rnn_states = self.step(x, rnn_states, encoder_states, train=False)
 
             scores = xp.exp(y.data)
             scores /= scores.sum(axis=1, keepdims=True)
@@ -203,10 +204,10 @@ class AttentionalDecoder(Chain):
 
         return res
 
-    def step(self, x, rnn_states, encoder_states):
+    def step(self, x, rnn_states, encoder_states, train):
         new_states = []
         h_in = self.word_emb(x)
-        for rnn, state in zip(self.rnns, rnn_states):
+        for i, (rnn, state) in enumerate(zip(self.rnns, rnn_states)):
             if self.gru:
                 h = state
                 state = rnn(h, h_in)
@@ -216,6 +217,10 @@ class AttentionalDecoder(Chain):
                 state = rnn(c, h, h_in)
                 _, h_in = state
             new_states.append(state)
+
+            if i < len(self.rnns) - 1:
+                if self.dropout_ratio > 0:
+                    h_in = F.dropout(h_in, self.dropout_ratio, train)
 
         batch_size, input_length, hidden_dim = encoder_states.data.shape
         h_in_linear = self.phi1_linear(h_in)    # (batch_size, hidden_dim)
@@ -242,7 +247,7 @@ class AttentionalDecoder(Chain):
 
 class AttentionalEncoderDecoder(Chain):
 
-    def __init__(self, in_vocab_size, hidden_dim, layer_num, out_vocab_size, gru, bidirectional, pyramidal, src_vocab_size=None):
+    def __init__(self, in_vocab_size, hidden_dim, layer_num, out_vocab_size, gru, bidirectional, pyramidal, dropout_ratio, src_vocab_size=None):
         super(AttentionalEncoderDecoder, self).__init__()
 
         if src_vocab_size is None:
@@ -268,9 +273,9 @@ class AttentionalEncoderDecoder(Chain):
             else:
                 rnn = Rnn(hidden_dim)
             rnns.add_link(rnn)
-        multi_rnn = MultiLayerRnn(rnns, [hidden_dim] * layer_num, pyramidal)
+        multi_rnn = MultiLayerRnn(rnns, [hidden_dim] * layer_num, pyramidal, dropout_ratio)
         self.add_link('encoder', Encoder(self.word_emb_src, multi_rnn))
-        self.add_link('decoder', AttentionalDecoder(self.word_emb_trg, hidden_dim, layer_num, out_vocab_size, gru))
+        self.add_link('decoder', AttentionalDecoder(self.word_emb_trg, hidden_dim, layer_num, out_vocab_size, gru, dropout_ratio))
 
         self.in_vocab_size = in_vocab_size
         self.hidden_dim = hidden_dim
@@ -282,7 +287,7 @@ class AttentionalEncoderDecoder(Chain):
 
     def __call__(self, xs, ts):
         # NOTE: users must prepend <EOS> and pad with -1 by themselves
-        hs = self.encoder(xs)
+        hs = self.encoder(xs, train=True)
         encoder_states = self.create_encoder_states_matrix(hs)
         ys, ws = self.decoder(ts[:-1], encoder_states)  # last element of ts only plays a role of target
 
@@ -295,13 +300,13 @@ class AttentionalEncoderDecoder(Chain):
         return loss, ys, ws
 
     def generate(self, xs, **kwargs):
-        hs = self.encoder(xs)
+        hs = self.encoder(xs, train=False)
         encoder_states = self.create_encoder_states_matrix(hs)
         ids, ys, ws = self.decoder.generate(encoder_states, **kwargs)
         return ids, ys, ws
 
     def generate_beam(self, xs, **kwargs):
-        hs = self.encoder(xs)
+        hs = self.encoder(xs, train=False)
         encoder_states = self.create_encoder_states_matrix(hs)
         return self.decoder.generate_beam(encoder_states, **kwargs)
 
@@ -312,6 +317,7 @@ class AttentionalEncoderDecoder(Chain):
         hs_3d_concat_linear = self.decoder.phi2_linear(F.reshape(hs_3d_concat, (-1, dim)))  # (batch_size * input_length, dim)
         hs_3d_concat_linear_tanh = F.tanh(F.reshape(hs_3d_concat_linear, (batch_size, -1, dim)))     # (batch_size, input_length, dim)
         return hs_3d_concat_linear_tanh
+
 
 def _create_var(arr, val, dtype):
     batch_size = arr.shape[0]

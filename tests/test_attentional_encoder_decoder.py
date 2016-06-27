@@ -8,23 +8,24 @@ from ecnn.nn.attentional_encoder_decoder import AttentionalEncoderDecoder
 class TestAttentionalEncoderDecoder(unittest.TestCase):
 
     def setUp(self):
-        in_vocab_size = 10
-        out_vocab_size = 10
-        hidden_dim = 5
+        in_vocab_size = 5
+        out_vocab_size = 5
+        hidden_dim = 4
         layer_num = 3
         self.encdecs = [
-            AttentionalEncoderDecoder(in_vocab_size, hidden_dim, layer_num, out_vocab_size, gru, bidirectional, pyramidal, src_vocab_size)
+            AttentionalEncoderDecoder(in_vocab_size, hidden_dim, layer_num, out_vocab_size, gru, bidirectional, pyramidal, dropout_ratio, src_vocab_size)
             for gru in [True, False]
             for bidirectional in [True, False]
             for pyramidal in [True, False]
             for src_vocab_size in [in_vocab_size, None]
+            for dropout_ratio in [.0, .5]
             ]
 
     def test_forward(self):
         for encdec in self.encdecs:
-            batch_size = 6
-            x_len = 11
-            t_len = 4
+            batch_size = 2
+            x_len = 5
+            t_len = 3
             xs = _create_xs(encdec, batch_size, x_len)
             ts = _create_xs(encdec, batch_size, t_len)
             loss, ys, ws = encdec(xs, ts)
@@ -41,9 +42,9 @@ class TestAttentionalEncoderDecoder(unittest.TestCase):
 
     def test_generate(self):
         for encdec in self.encdecs:
-            batch_size = 6
-            x_len = 11
-            max_len = 10
+            batch_size = 3
+            x_len = 5
+            max_len = 7
             xs = _create_xs(encdec, batch_size, x_len, volatile='on')
             ids, ys, ws = encdec.generate(xs, max_len=max_len)
 
@@ -56,11 +57,11 @@ class TestAttentionalEncoderDecoder(unittest.TestCase):
     def test_generate_beam(self):
         for encdec in self.encdecs:
             batch_size = 1
-            x_len = 11
-            max_len = 10
+            x_len = 4
+            max_len = 6
             xs = _create_xs(encdec, batch_size, x_len, volatile='on')
 
-            beam_size = 4
+            beam_size = 3
             #for ids, ys, ws in encdec.generate_beam(xs, beam_size=beam_size, max_len=max_len):
             for ids in encdec.generate_beam(xs, beam_size=beam_size, max_len=max_len):
                 #self.assertEqual(len(ids), len(ys))

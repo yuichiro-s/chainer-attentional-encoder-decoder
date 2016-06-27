@@ -57,10 +57,11 @@ def main(args):
     vocab_size_trg = vocab_trg.size()
     layer_num = args.layer
     hidden_dim = args.hidden
+    gru = args.gru
     bidirectional = not args.bidirectional
     pyramidal = not args.pyramidal
-    gru = args.gru
-    encdec = AttentionalEncoderDecoder(vocab_size_trg, hidden_dim, layer_num, vocab_size_trg, gru, bidirectional, pyramidal,
+    dropout_ratio = args.dropout_ratio
+    encdec = AttentionalEncoderDecoder(vocab_size_trg, hidden_dim, layer_num, vocab_size_trg, gru, bidirectional, pyramidal, dropout_ratio,
                                        src_vocab_size=vocab_size_src)
 
     if args.dev:
@@ -100,6 +101,7 @@ if __name__ == '__main__':
     parser.add_argument('--gru', action='store_true', help='use GRU instead of LSTM')
     parser.add_argument('--bidirectional', action='store_true', help='use bidirectional RNNs for encoder')
     parser.add_argument('--pyramidal', action='store_true', help='use pyramidal structure for encoder')
+    parser.add_argument('--dropout-ratio', type=float, default=0., help='dropout ratio between non-recurrent hidden layers of encoder/decoder')
 
     # training options
     parser.add_argument('--batch', type=int, default=32, help='batch size')

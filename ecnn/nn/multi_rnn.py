@@ -7,7 +7,7 @@ import chainer.functions as F
 
 class MultiLayerRnn(Chain):
 
-    def __init__(self, rnns, dims, pyramidal):
+    def __init__(self, rnns, dims, pyramidal, dropout_ratio):
         super(MultiLayerRnn, self).__init__(
             rnns=rnns,
         )
@@ -18,13 +18,17 @@ class MultiLayerRnn(Chain):
                 combine_two = CombineTwo(in_dim, out_dim)
                 self.combine_twos.add_link(combine_two)
             assert len(self.rnns) == len(self.combine_twos) + 1
+        self.dropout_ratio = dropout_ratio
 
-    def __call__(self, xs):
+    def __call__(self, xs, train):
         hs = xs
         for i, rnn in enumerate(self.rnns):
             hs = rnn(hs)
-            if self.pyramidal and i < len(self.combine_twos):
-                hs = self.combine_twos[i](hs)
+            if i < len(self.rnns) - 1:
+                if self.dropout_ratio > 0:
+                    hs = list(map(lambda h: F.dropout(h, self.dropout_ratio, train), hs))
+                if self.pyramidal:
+                    hs = self.combine_twos[i](hs)
         return hs
 
 
