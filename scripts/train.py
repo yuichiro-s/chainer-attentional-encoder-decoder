@@ -59,7 +59,8 @@ def main(args):
     hidden_dim = args.hidden
     bidirectional = not args.bidirectional
     pyramidal = not args.pyramidal
-    encdec = AttentionalEncoderDecoder(vocab_size_trg, hidden_dim, layer_num, vocab_size_trg, bidirectional, pyramidal,
+    gru = args.gru
+    encdec = AttentionalEncoderDecoder(vocab_size_trg, hidden_dim, layer_num, vocab_size_trg, gru, bidirectional, pyramidal,
                                        src_vocab_size=vocab_size_src)
 
     if args.dev:
@@ -73,7 +74,9 @@ def main(args):
 
     train_model(encdec, train_batches, optimizer, args.model,
                 max_epoch=args.epoch, gpu=args.gpu, save_every=args.save_every,
-                epoch_end_func=epoch_end_func)
+                epoch_end_func=epoch_end_func,
+                ignore_exception=not args.no_ignore_exception,
+                )
 
 
 if __name__ == '__main__':
@@ -106,5 +109,6 @@ if __name__ == '__main__':
     parser.add_argument('--optim', nargs='+', default=['Adam'], help='optimization method')
     parser.add_argument('--gpu', type=int, default=None, help='GPU ID (default: use CPU)')
     parser.add_argument('--save-every', type=int, default=1, help='save model every this number of epochs')
+    parser.add_argument('--no-ignore-exception', action='store_true', help='stop training when exception is encountered')
 
     main(parser.parse_args())

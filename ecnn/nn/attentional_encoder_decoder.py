@@ -229,7 +229,8 @@ class AttentionalDecoder(Chain):
         if self.gru:
             vs = []
             for _ in range(self.layer_num):
-                v = Variable(xp.zeros((batch_size, self.hidden_dim), dtype=np.float32), volatile='auto')
+                d = xp.zeros((batch_size, self.hidden_dim), dtype=np.float32)
+                v = Variable(d, volatile='auto')
                 vs.append(v)
             return vs
         else:

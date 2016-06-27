@@ -14,6 +14,6 @@ class BiRnn(Chain):
 
     def __call__(self, xs):
         hs_f = self.forward_rnn(xs)
-        hs_b = reversed(self.backward_rnn(reversed(xs)))
+        hs_b = reversed(self.backward_rnn(list(reversed(xs))))
         hs = list(map(lambda h_fb: h_fb[0] + h_fb[1], zip(hs_f, hs_b)))
         return hs

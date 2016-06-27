@@ -11,7 +11,7 @@ from ecnn.vocabulary import IGNORE_ID, UNK_ID
 from ecnn import util
 
 
-def train_model(model, batches, optimizer, dest_dir, max_epoch=None, gpu=None, save_every=1, epoch_end_func=None):
+def train_model(model, batches, optimizer, dest_dir, max_epoch=None, gpu=None, save_every=1, epoch_end_func=None, ignore_exception=True):
     """Common training procedure.
     :param model: model to train
     :param batches: training data
@@ -100,6 +100,8 @@ def train_model(model, batches, optimizer, dest_dir, max_epoch=None, gpu=None, s
 
             except Exception as e:
                 logger.warn(e)
+                if not ignore_exception:
+                    raise e
                 time.sleep(1)
 
         time_end = time.time()
