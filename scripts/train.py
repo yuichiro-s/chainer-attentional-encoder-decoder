@@ -92,9 +92,9 @@ if __name__ == '__main__':
     parser.add_argument('--dev', help='development data path')
 
     # NN architecture
-    #parser.add_argument('--hidden', nargs='+', type=int, default=[128, 128], help='size of each hidden layer')
     parser.add_argument('--hidden', type=int, default=128, help='size of hidden layer')
     parser.add_argument('--layer', type=int, default=-1, help='vocabulary size (default: use all words)')
+    parser.add_argument('--gru', action='store_true', help='use GRU instead of LSTM')
     parser.add_argument('--bidirectional', action='store_true', help='use bidirectional RNNs for encoder')
     parser.add_argument('--pyramidal', action='store_true', help='use pyramidal structure for encoder')
 

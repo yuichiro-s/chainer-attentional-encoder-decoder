@@ -13,7 +13,8 @@ class TestAttentionalEncoderDecoder(unittest.TestCase):
         hidden_dim = 5
         layer_num = 3
         self.encdecs = [
-            AttentionalEncoderDecoder(in_vocab_size, hidden_dim, layer_num, out_vocab_size, bidirectional, pyramidal, src_vocab_size)
+            AttentionalEncoderDecoder(in_vocab_size, hidden_dim, layer_num, out_vocab_size, gru, bidirectional, pyramidal, src_vocab_size)
+            for gru in [True, False]
             for bidirectional in [True, False]
             for pyramidal in [True, False]
             for src_vocab_size in [in_vocab_size, None]

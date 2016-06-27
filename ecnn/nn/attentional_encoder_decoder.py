@@ -7,7 +7,7 @@ import chainer.links as L
 import numpy as np
 
 from ecnn.vocabulary import BOS_ID, EOS_ID, IGNORE_ID
-from ecnn.nn.rnn import LstmRnn
+from ecnn.nn.rnn import LstmRnn, GruRnn
 from ecnn.nn.bi_rnn import BiRnn
 from ecnn.nn.multi_rnn import MultiLayerRnn
 
@@ -203,7 +203,7 @@ class AttentionalDecoder(Chain):
 
 class AttentionalEncoderDecoder(Chain):
 
-    def __init__(self, in_vocab_size, hidden_dim, layer_num, out_vocab_size, bidirectional, pyramidal, src_vocab_size=None):
+    def __init__(self, in_vocab_size, hidden_dim, layer_num, out_vocab_size, gru, bidirectional, pyramidal, src_vocab_size=None):
         super(AttentionalEncoderDecoder, self).__init__()
 
         if src_vocab_size is None:
@@ -219,13 +219,15 @@ class AttentionalEncoderDecoder(Chain):
             self.add_link('word_emb_trg', word_emb_trg)
 
         rnns = ChainList()
+        Rnn = GruRnn if gru else LstmRnn
+
         for i in range(layer_num):
             if bidirectional:
-                rnn_f = LstmRnn(hidden_dim, hidden_dim)
-                rnn_b = LstmRnn(hidden_dim, hidden_dim)
+                rnn_f = Rnn(hidden_dim)
+                rnn_b = Rnn(hidden_dim)
                 rnn = BiRnn(rnn_f, rnn_b)
             else:
-                rnn = LstmRnn(hidden_dim, hidden_dim)
+                rnn = Rnn(hidden_dim)
             rnns.add_link(rnn)
         multi_rnn = MultiLayerRnn(rnns, [hidden_dim] * layer_num, pyramidal)
         self.add_link('encoder', Encoder(self.word_emb_src, multi_rnn))
@@ -235,6 +237,7 @@ class AttentionalEncoderDecoder(Chain):
         self.hidden_dim = hidden_dim
         self.layer_num = layer_num
         self.out_vocab_size = out_vocab_size
+        self.gru = gru
         self.bidirectional = bidirectional
         self.pyramidal = pyramidal
 

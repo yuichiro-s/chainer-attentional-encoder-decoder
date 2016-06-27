@@ -7,5 +7,5 @@ setup(
     version='0.0.1',
     description='',
     packages=find_packages(),
-    requires=[],
+    requires=['chainer', ],
 )
